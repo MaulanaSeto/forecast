@@ -429,7 +429,9 @@ def preprocess_data(
         f"{train_past.shape[1]} past, {len(future_cols)} future, "
         f"{static_matrix.shape[1]} static"
     )
-    print(msg)
+    import torch.distributed as dist
+    if not dist.is_initialized() or dist.get_rank() == 0:
+        print(msg)
 
     return {
         "train_past": train_past,

@@ -272,7 +272,10 @@ def run_ablation(config: dict[str, Any]) -> dict[str, Any]:
         save_dir=os.path.join(config["save_dir"], "ablation"),
     )
 
-    print("\n>>> ABLATION STUDY COMPLETE")
+    local_rank = config.get("local_rank", 0)
+    is_main_process = not config.get("is_distributed", False) or local_rank == 0
+    if is_main_process:
+        print("\n>>> ABLATION STUDY COMPLETE")
     return results
 
 
@@ -303,7 +306,10 @@ def make_debug_subset(
     subset_dict["target_tickers"] = data_dict["target_tickers"][:2]
     subset_dict["n_train"], subset_dict["n_test"] = train_size, test_size
 
-    print(f"  [DEBUG] Subset created: {train_size} train, {test_size} test, 2 tickers")
+    local_rank = config.get("local_rank", 0)
+    is_main_process = not config.get("is_distributed", False) or local_rank == 0
+    if is_main_process:
+        print(f"  [DEBUG] Subset created: {train_size} train, {test_size} test, 2 tickers")
     return subset_dict
 
 
