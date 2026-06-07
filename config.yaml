@@ -1,0 +1,34 @@
+# Model architecture
+d_model: 64
+n_heads: 4
+n_lstm_layers: 2
+dropout: 0.1
+
+# Data
+lookback: 60
+horizon: 1
+
+# Training
+batch_size: 256
+lr: 0.001
+weight_decay: 0.0001
+max_epochs: 30
+patience: 5
+grad_clip: 1.0
+num_workers: 4
+max_gpus: 4
+
+# Validation
+val_split: 0.8
+
+# Paths
+data_dir: "dataset"
+save_dir: "checkpoints"
+results_dir: "results"
+submission_path: "tft.csv"
+
+# Debug settings
+debug_data_pct: 0.001
+debug_max_epochs: 2
+debug_lookback: 10
+debug_batch_size: 16

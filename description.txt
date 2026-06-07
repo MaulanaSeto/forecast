@@ -1,0 +1,109 @@
+﻿CSCE604038 • Deep Learning
+Semester Genap 2025/2026
+Fakultas Ilmu Komputer, Universitas Indonesia
+
+
+Tugas Kelompok
+
+
+Deskripsi Umum
+Pertama kalian perlu memilih topik yang akan kalian kerjakan sebagai kelompok. Permasalahan yang diberikan berupa kompetisi Kaggle dimana kalian perlu membuat model dan submisi prediksi ke kompetisi. Performa pada Kaggle akan menjadi salah satu kriteria penilaian pada tugas kelompok. 
+Masing-masing anggota dalam kelompok harus membuat model machine learning yang berbeda untuk setiap masalah yang dikerjakan. Sehingga setiap anggota harus melakukan prediksi dengan model terbaik yang dia buat dan melakukan submisi ke Kaggle. Anggota yang tidak membuat model akan dianggap tidak bekerja pada tugas kelompok.
+
+
+Pembentukan Kelompok
+Setiap kelompok terdiri dari 3 mahasiswa. Masing-masing kelompok dapat mengisi pada sheet ini. Jika terdapat mahasiswa yang belum memiliki kelompok hingga deadline berakhir, asisten dosen akan membuat kelompok secara acak bagi mahasiswa tersebut.
+
+
+________________
+Pemilihan Topik
+Berikut topik yang dapat kalian pilih, tiap topik hanya bisa dipilih oleh maksimal 3-4 kelompok,
+Topik
+	Tags
+	Indonesian Stock Exchange Forecasting
+	Time Series (Modal / Forecasting Task)
+	Fashion Classification
+	Image (Multilabel Classification Task)
+	Oracle Bone Script Recognition
+	Image Recognition
+	
+
+Submisi Pada Kaggle
+Pada Kaggle terdapat leaderboard yang menunjukkan performa kalian dan performa kelompok lain. Setiap harinya kalian diberikan batas 20 percobaan submisi sehingga jangan menumpuk submisi pada akhir deadline. Untuk menambahkan submisi ke leaderboard, kalian diwajibkan untuk memilih submisi secara manual. Masing-masing anggota harus mengirimkan 1 submisi yang mereka buat ke leaderboard sehingga diwajibkan file submisi dinamai dengan nama pembuat model dan diberikan deskripsi. 
+
+
+Contoh pemilihan submisi dapat dilihat pada gambar berikut, 
+  
+
+
+
+Persyaratan Model
+Pada tugas akhir ini kalian diwajibkan menggunakan library PyTorch untuk membuat model. Hal ini agar kalian dapat merancang sendiri arsitektur dan proses training setiap epoch-nya. Model pre-training yang diperbolehkan hanya untuk penggunaan data teks seperti BERT. Untuk data citra kalian boleh menggunakan arsitektur yang sudah ada seperti VGG16 namun weight dari model harus dari scratch. Penggunaan arsitektur deep learning lainnya untuk menyelesaikan suatu permasalahan juga dapat digunakan, dengan catatan harus berkonsultasi dengan asisten dosen sebelum menggunakannya.
+
+
+GPU
+GPU sangat mempercepat proses pelatihan dari model Deep Learning. Oleh karena itu, kalian sangat disarankan untuk menggunakan GPU gratis yang disediakan oleh Google Collab maupun Kaggle Notebook.
+
+
+Ablation Study (Komponen Bonus, Individual)
+Pada kelas Deep Learn kali ini, Dosen dan Asdos memiliki ide untuk memperkenalkan Ablation Study kepada kalian, tapi untuk sekarang komponen ini bersifat bonus dan dinilai secara individu. Ablation study seringkali dilakukan pada penelitian dan bisa diterapkan saat kalian skripsi. Lebih jelasnya, ablation study dilakukan dengan menghapus atau merusak salah satu komponen dari model AI untuk mengetahui kontribusi dari komponen tersebut terhadap performa modelnya.
+
+
+Sebenarnya, ablation study biasa diterapkan pada komponen baru yang diperkenalkan pada suatu penelitian, tapi untuk mempermudah:
+* Jika model kalian tidak memiliki komponen khusus, kalian boleh menghapus satu lapisan terakhir dari model kalian. Contohnya, jika kalian menggunakan model AlexNet, maka dari keempat lapisan yang ada, kalian boleh menghapus lapisan terakhir, yaitu tiga konvolusi + satu max pool.
+* Misalkan kalian menggunakan model yang memang memiliki komponen khusus, seperti ResNet dengan residualnya, maka kalian sangat disarankan untuk melakukan ablation  pada komponen residual ini.
+* Contoh lainnya, misalkan kalian menggunakan model LSTM, maka ablation boleh dilakukan pada input gate-nya saja
+
+
+Submisi Progress (Kamis, 14 Mei 23.55 WIB)
+Pada tahap ini kalian perlu mengumpulkan powerpoint yang berisi:
+* Pemahaman problem (problem specification),
+* Fitur yang akan digunakan,
+* Rencana Preprocessing (dijelaskan secara singkat),
+* Rencana model yang akan digunakan,
+* Progress pengerjaan kalian
+* Kesulitan yang dihadapi.
+
+
+Submisi Akhir (Senin, 8 Juni 23.55 WIB)
+Untuk laporan akhir terdapat beberapa hal yang perlu kalian siapkan dalam 1 file zip. Selain itu juga akan dilakukan presentasi demo dimana kalian harus menjelaskan powerpoint yang kalian buat dan melakukan demo ketika diberikan input. File yang harus kalian siapkan:
+* Model dalam format .h5, .hdf5, .save, .pt, atau sejenisnya. Cantumkan juga cara untuk load model. (Jika terlalu besar, simpan model ke drive dan submit txt berisi link ke model)
+* File csv yang sudah diprediksi
+* Code atau Notebook ipynb hasil eksperimen
+* Laporan eksperimen menggunakan powerpoint yang meliputi hal berikut namun tidak terbatas pada:
+   * Penjelasan Topik,
+   * Penjelasan Fase Preprocessing,
+   * Penjelasan Model, Spesifikasi & Diagram Model dan Hyperparameter (Learning Rate, Loss Function, Optimizer, Batch, Regularisasi)
+   * Evaluasi dan Analisis (Kuantitatif dan Kualitatif).
+
+
+
+
+
+
+
+
+Jadwal Tugas Kelompok
+Checkpoint
+	Waktu
+	Pendaftaran kelompok
+	Buka Minggu, 5 April sampai Pemilihan topik
+	 Pemilihan topik
+	Rilis: Selasa, 14 April 2026, 23.55 WIB
+War: Kamis, 16 April 2026, 17.50 WIB
+Hasil: Kamis, 16 April 2026, 21.00 WIB
+	Laporan progress
+	Kamis, 14 Mei 2026, 23.55 WIB
+	Laporan akhir
+	Senin, 8 Juni 2026, 23.55 WIB
+	Presentasi Akhir
+	TBD
+	
+
+Extras:
+* Perjelas Ablation study, kasih konteks dan teori
+* Catat eksperimen yang dilakukan (Hyperparameter Tuning), dan tampilkan saat presentasi
+* Tambahkan Pastikan pakai GPU dengan set device cuda di PyTorch
+* Spesifikasi apa saja yang sebaiknya ada di Slide Presentasi (Analisis Error, Experimentation Hyperparameter & Model, termasuk yang gagal dan yang aneh, Problem & EDA bisa di-singkat, Evaluation termasuk loss dan visualisasinya (Training dan loss gabung jadi 1), Penggabungan semua model mana yang terbaik) (Untuk yang dataset related, bisa ngerjain sekelompok)
+* Komponen-nya kurang clear, lebih baik question iya tidak. Questioner, biar yang ngisi gampang & jelas. Kurangi opini.
+* Rubrik-nya lebih tangible, seperti checklist, ordinal kalau kualitas, jangka angka 0-100 abstrak.
