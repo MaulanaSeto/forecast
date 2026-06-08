@@ -39,6 +39,7 @@ d_model: 64
 n_heads: 4
 lr: 0.001
 max_epochs: 30
+use_checkpoint: true # Aktifkan Gradient Checkpointing di VSN untuk menghemat VRAM GPU secara signifikan
 # ...
 ```
 
@@ -137,6 +138,7 @@ Anda dapat mengubah hyperparameter maupun konfigurasi path langsung dari argumen
 | `--max-gpus` | Batas maksimum GPU yang digunakan untuk DDP | 1 |
 | `--debug` | Flag untuk menjalankan mode debug cepat (subset data) | (False) |
 | `--debug-mode` | Pilihan uji logika (`none`, `overfit`, `causality`, `permutation`, `anomaly`) | `none` |
+| `--no-checkpoint` | Menonaktifkan gradient checkpointing pada Variable Selection Networks (VSN) | (False) |
 
 ## Metrik Evaluasi
 Model dievaluasi menggunakan **Root Mean Squared Error (RMSE)**. Target utama adalah mengalahkan baseline prediksi nol (RMSE ≈ 0.04188).

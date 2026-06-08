@@ -434,8 +434,11 @@ class TFT(nn.Module):
         dropout: float = 0.1,
         lookback: int = 60,
         horizon: int = 1,
+        use_checkpoint: bool = True,
     ) -> None:
         super().__init__()
+
+        self.use_checkpoint = use_checkpoint
 
         self.n_static = n_static
         self.n_past = n_past
@@ -586,8 +589,18 @@ class TFT(nn.Module):
         )
 
         # 3. Variable selection
-        past_selected = self.vsn_past(past_proj, context=c_s)  # (B, T_p, D)
-        future_selected = self.vsn_future(future_proj, context=c_s)  # (B, T_f, D)
+        if self.use_checkpoint and self.training:
+            from torch.utils.checkpoint import checkpoint
+
+            past_selected = checkpoint(
+                self.vsn_past, past_proj, c_s, use_reentrant=False
+            )
+            future_selected = checkpoint(
+                self.vsn_future, future_proj, c_s, use_reentrant=False
+            )
+        else:
+            past_selected = self.vsn_past(past_proj, context=c_s)  # (B, T_p, D)
+            future_selected = self.vsn_future(future_proj, context=c_s)  # (B, T_f, D)
 
         # 4. LSTM encoder (past)
         h0, c0 = self._init_lstm_states(c_h, c_c)
@@ -652,8 +665,10 @@ class TFT_NoVSN(nn.Module):
         dropout: float = 0.1,
         lookback: int = 60,
         horizon: int = 1,
+        use_checkpoint: bool = True,
     ) -> None:
         super().__init__()
+        self.use_checkpoint = use_checkpoint
 
         self.n_static = n_static
         self.n_past = n_past
@@ -831,8 +846,10 @@ class TFT_NoAttention(nn.Module):
         dropout: float = 0.1,
         lookback: int = 60,
         horizon: int = 1,
+        use_checkpoint: bool = True,
     ) -> None:
         super().__init__()
+        self.use_checkpoint = use_checkpoint
 
         self.n_static = n_static
         self.n_past = n_past
@@ -947,8 +964,18 @@ class TFT_NoAttention(nn.Module):
         )
 
         # 3. Variable selection
-        past_selected = self.vsn_past(past_proj, context=c_s)
-        future_selected = self.vsn_future(future_proj, context=c_s)
+        if self.use_checkpoint and self.training:
+            from torch.utils.checkpoint import checkpoint
+
+            past_selected = checkpoint(
+                self.vsn_past, past_proj, c_s, use_reentrant=False
+            )
+            future_selected = checkpoint(
+                self.vsn_future, future_proj, c_s, use_reentrant=False
+            )
+        else:
+            past_selected = self.vsn_past(past_proj, context=c_s)
+            future_selected = self.vsn_future(future_proj, context=c_s)
 
         # 4. LSTM encoder
         h0, c0 = self._init_lstm_states(c_h, c_c)

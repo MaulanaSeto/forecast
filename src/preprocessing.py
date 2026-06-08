@@ -430,6 +430,7 @@ def preprocess_data(
         f"{static_matrix.shape[1]} static"
     )
     import torch.distributed as dist
+
     if not dist.is_initialized() or dist.get_rank() == 0:
         print(msg)
 

@@ -62,6 +62,7 @@ def load_config(config_path: str = "config.yaml") -> dict[str, Any]:
         "submission_path": "submission.csv",
         "num_workers": 0,
         "max_gpus": 1,
+        "use_checkpoint": True,
     }
 
 
@@ -69,7 +70,7 @@ def setup_device(config: dict[str, Any] | None = None) -> torch.device:
     """Setup and return the best available device (CUDA/CPU)."""
     local_rank = config.get("local_rank", 0) if config else 0
     is_distributed = config.get("is_distributed", False) if config else False
-    
+
     if torch.cuda.is_available():
         if is_distributed:
             device = torch.device("cuda", local_rank)
@@ -80,7 +81,7 @@ def setup_device(config: dict[str, Any] | None = None) -> torch.device:
     else:
         device = torch.device("cpu")
         name = "CPU"
-    
+
     if not is_distributed or local_rank == 0:
         print(f"  Device: {device} ({name})")
     return device
@@ -132,6 +133,7 @@ def run_training_pipeline(
         "dropout": config["dropout"],
         "lookback": config["lookback"],
         "horizon": config["horizon"],
+        "use_checkpoint": config.get("use_checkpoint", True),
     }
     model = TFT(**model_kwargs).to(device)
 
@@ -139,7 +141,12 @@ def run_training_pipeline(
     debug_mode = config.get("debug_mode", "none")
     if debug_mode in ("overfit", "causality", "permutation"):
         if is_main_process:
-            from src.debug import run_overfit_test, run_causality_test, run_permutation_test
+            from src.debug import (
+                run_overfit_test,
+                run_causality_test,
+                run_permutation_test,
+            )
+
             if debug_mode == "overfit":
                 run_overfit_test(model, loaders["train_loader"], device, config)
             elif debug_mode == "causality":
@@ -205,6 +212,7 @@ def run_inference_only(config: dict[str, Any]) -> None:
         "dropout": config["dropout"],
         "lookback": config["lookback"],
         "horizon": config["horizon"],
+        "use_checkpoint": config.get("use_checkpoint", True),
     }
     model = TFT(**model_kwargs).to(device)
 
@@ -261,6 +269,7 @@ def run_ablation(config: dict[str, Any]) -> dict[str, Any]:
         "dropout": config["dropout"],
         "lookback": config["lookback"],
         "horizon": config["horizon"],
+        "use_checkpoint": config.get("use_checkpoint", True),
     }
 
     results = run_ablation_study(
@@ -309,7 +318,9 @@ def make_debug_subset(
     local_rank = config.get("local_rank", 0)
     is_main_process = not config.get("is_distributed", False) or local_rank == 0
     if is_main_process:
-        print(f"  [DEBUG] Subset created: {train_size} train, {test_size} test, 2 tickers")
+        print(
+            f"  [DEBUG] Subset created: {train_size} train, {test_size} test, 2 tickers"
+        )
     return subset_dict
 
 
@@ -378,6 +389,11 @@ Examples:
         choices=["none", "overfit", "causality", "permutation", "anomaly"],
         help="Logical debugging mode (default: none)",
     )
+    parser.add_argument(
+        "--no-checkpoint",
+        action="store_true",
+        help="Disable gradient checkpointing in TFT's Variable Selection Networks",
+    )
 
     args = parser.parse_args()
 
@@ -406,6 +422,9 @@ Examples:
             config[k] = v
 
     config["debug"] = args.debug
+
+    if args.no_checkpoint:
+        config["use_checkpoint"] = False
 
     if config.get("debug_mode") == "anomaly":
         print(">>> PyTorch autograd anomaly detection ENABLED.")
@@ -447,7 +466,10 @@ Examples:
 
     if num_gpus > 1 and args.mode in ("full", "train", "ablation"):
         import torch.multiprocessing as mp
-        mp.spawn(ddp_worker, args=(num_gpus, config, args.mode), nprocs=num_gpus, join=True)
+
+        mp.spawn(
+            ddp_worker, args=(num_gpus, config, args.mode), nprocs=num_gpus, join=True
+        )
     else:
         if args.mode in ("full", "train"):
             run_training_pipeline(config)
@@ -457,23 +479,26 @@ Examples:
             run_ablation(config)
 
 
-def ddp_worker(local_rank: int, world_size: int, config: dict[str, Any], mode: str) -> None:
+def ddp_worker(
+    local_rank: int, world_size: int, config: dict[str, Any], mode: str
+) -> None:
     """Worker function for PyTorch DistributedDataParallel (DDP) spawned processes."""
     import torch.distributed as dist
+
     os.environ["MASTER_ADDR"] = "localhost"
     os.environ["MASTER_PORT"] = "12355"
-    
+
     backend = "nccl" if torch.cuda.is_available() else "gloo"
     dist.init_process_group(backend=backend, rank=local_rank, world_size=world_size)
-    
+
     if torch.cuda.is_available():
         torch.cuda.set_device(local_rank)
-    
+
     config_worker = config.copy()
     config_worker["local_rank"] = local_rank
     config_worker["world_size"] = world_size
     config_worker["is_distributed"] = True
-    
+
     try:
         if mode in ("full", "train"):
             run_training_pipeline(config_worker)
