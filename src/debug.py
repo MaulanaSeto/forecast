@@ -29,21 +29,10 @@ def run_overfit_test(
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     criterion = nn.MSELoss()
 
-    # Unpack batch and reshape
-    B_sz, n_tickers, n_static = batch["static"].shape
-    lookback = batch["past"].shape[1]
-    n_past = batch["past"].shape[2]
-    n_future = batch["future"].shape[2]
-
-    static_x = batch["static"].view(B_sz * n_tickers, n_static).to(device)
-
-    past_x = batch["past"].unsqueeze(1).expand(-1, n_tickers, -1, -1)
-    past_x = past_x.reshape(B_sz * n_tickers, lookback, n_past).to(device)
-
-    future_x = batch["future"].unsqueeze(1).expand(-1, n_tickers, -1, -1)
-    future_x = future_x.reshape(B_sz * n_tickers, 1, n_future).to(device)
-
-    targets = batch["target"].view(B_sz * n_tickers).to(device)
+    static_x = batch["static"].to(device)
+    past_x = batch["past"].to(device)
+    future_x = batch["future"].to(device)
+    targets = batch["target"].to(device)
 
     initial_loss = None
     final_loss = None
@@ -85,16 +74,9 @@ def run_causality_test(
     model.eval()
 
     batch = next(iter(loader))
-    B_sz, n_tickers, n_static = batch["static"].shape
-    lookback = batch["past"].shape[1]
-    n_past = batch["past"].shape[2]
-    n_future = batch["future"].shape[2]
-
-    static_x = batch["static"].view(B_sz * n_tickers, n_static).to(device)
-    past_x = batch["past"].unsqueeze(1).expand(-1, n_tickers, -1, -1)
-    past_x = past_x.reshape(B_sz * n_tickers, lookback, n_past).to(device)
-    future_x = batch["future"].unsqueeze(1).expand(-1, n_tickers, -1, -1)
-    future_x = future_x.reshape(B_sz * n_tickers, 1, n_future).to(device)
+    static_x = batch["static"].to(device)
+    past_x = batch["past"].to(device)
+    future_x = batch["future"].to(device)
 
     with torch.no_grad():
         preds_orig = model(static_x, past_x, future_x).cpu()
@@ -146,46 +128,30 @@ def run_permutation_test(
     device: torch.device,
 ) -> None:
     # pylint: disable=too-many-locals
-    """Verify that permuting the order of tickers in the input permutes predictions identically (no cross-ticker leakage)."""
-    print("\n>>> STARTING LOGICAL TEST: TICKER PERMUTATION INVARIANCE")
+    """Verify that permuting the order of samples in the batch permutes predictions identically (no cross-sample leakage)."""
+    print("\n>>> STARTING LOGICAL TEST: BATCH SAMPLE PERMUTATION INVARIANCE")
     model.eval()
 
     batch = next(iter(loader))
-    B_sz, n_tickers, n_static = batch["static"].shape
-    lookback = batch["past"].shape[1]
-    n_past = batch["past"].shape[2]
-    n_future = batch["future"].shape[2]
-
-    static_x = batch["static"].view(B_sz * n_tickers, n_static).to(device)
-    past_x = batch["past"].unsqueeze(1).expand(-1, n_tickers, -1, -1)
-    past_x = past_x.reshape(B_sz * n_tickers, lookback, n_past).to(device)
-    future_x = batch["future"].unsqueeze(1).expand(-1, n_tickers, -1, -1)
-    future_x = future_x.reshape(B_sz * n_tickers, 1, n_future).to(device)
+    static_x = batch["static"].to(device)
+    past_x = batch["past"].to(device)
+    future_x = batch["future"].to(device)
 
     with torch.no_grad():
-        preds_orig = model(static_x, past_x, future_x).view(B_sz, n_tickers).cpu()
+        preds_orig = model(static_x, past_x, future_x).cpu()
 
-    # Permute tickers (reverse ordering)
-    perm = torch.arange(n_tickers - 1, -1, -1)
+    B_sz = static_x.size(0)
+    perm = torch.randperm(B_sz)
 
-    static_perm = batch["static"][:, perm, :]
-    static_perm_x = static_perm.view(B_sz * n_tickers, n_static).to(device)
-
-    past_perm = batch["past"].unsqueeze(1).expand(-1, n_tickers, -1, -1)[:, perm, :, :]
-    past_perm_x = past_perm.reshape(B_sz * n_tickers, lookback, n_past).to(device)
-
-    future_perm = (
-        batch["future"].unsqueeze(1).expand(-1, n_tickers, -1, -1)[:, perm, :, :]
-    )
-    future_perm_x = future_perm.reshape(B_sz * n_tickers, 1, n_future).to(device)
+    static_perm_x = static_x[perm]
+    past_perm_x = past_x[perm]
+    future_perm_x = future_x[perm]
 
     with torch.no_grad():
-        preds_perm = (
-            model(static_perm_x, past_perm_x, future_perm_x).view(B_sz, n_tickers).cpu()
-        )
+        preds_perm = model(static_perm_x, past_perm_x, future_perm_x).cpu()
 
-    # Restore the original order from the permuted prediction
-    preds_perm_restored = preds_perm[:, perm]
+    preds_perm_restored = torch.zeros_like(preds_perm)
+    preds_perm_restored[perm] = preds_perm
 
     diff = torch.abs(preds_orig - preds_perm_restored).max().item()
     print(f"  Max absolute discrepancy after permutation and restoration: {diff:.8f}")

@@ -74,24 +74,26 @@ class IDXDataset(Dataset):
 
     # Dataset interface
     def __len__(self) -> int:
-        """Total samples = n_timesteps - lookback."""
-        return self.n_valid_t
+        """Total samples = (n_timesteps - lookback) * n_tickers."""
+        return self.n_valid_t * self.n_tickers
 
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
-        """Return a single sample for the given linear index (timestep).
+        """Return a single sample for the given linear index (timestep, ticker).
 
         Returns
         -------
         dict with keys:
-            ``'static'``  — shape ``(n_tickers, n_static)``
+            ``'static'``  — shape ``(n_static,)``
             ``'past'``    — shape ``(lookback, n_past_features)``
             ``'future'``  — shape ``(1, n_future_features)``
-            ``'target'``  — shape ``(n_tickers,)`` (train mode only)
+            ``'target'``  — shape ``()`` (scalar, train mode only)
         """
-        t = self.valid_t[idx]
+        t_idx = idx // self.n_tickers
+        ticker_idx = idx % self.n_tickers
+        t = self.valid_t[t_idx]
 
         sample: dict[str, torch.Tensor] = {
-            "static": torch.from_numpy(self.static_matrix),  # (n_tickers, n_static)
+            "static": torch.from_numpy(self.static_matrix[ticker_idx]),  # (n_static,)
             "past": torch.from_numpy(
                 self.past_data[t - self.lookback : t]
             ),  # (lookback, n_past)
@@ -99,7 +101,9 @@ class IDXDataset(Dataset):
         }
 
         if self.mode == "train" and self.targets is not None:
-            sample["target"] = torch.from_numpy(self.targets[t])  # (n_tickers,)
+            sample["target"] = torch.tensor(
+                self.targets[t, ticker_idx], dtype=torch.float32
+            )
 
         return sample
 

@@ -31,6 +31,7 @@ def train_epoch(
     loader: DataLoader,
     optimizer: torch.optim.Optimizer,
     device: torch.device,
+    scaler: torch.cuda.amp.GradScaler | None = None,
     grad_clip: float = 1.0,
 ) -> float:
     # pylint: disable=too-many-local-variables
@@ -48,36 +49,28 @@ def train_epoch(
 
     progress = tqdm(loader, desc="  [Train]", leave=False, disable=disable_tqdm)
     for batch in progress:
-        B_sz, n_tickers, n_static = batch["static"].shape
-        lookback = batch["past"].shape[1]
-        n_past = batch["past"].shape[2]
-        n_future = batch["future"].shape[2]
-
-        static_x = (
-            batch["static"]
-            .view(B_sz * n_tickers, n_static)
-            .to(device, non_blocking=True)
-        )
-
-        past_x = batch["past"].unsqueeze(1).expand(-1, n_tickers, -1, -1)
-        past_x = past_x.reshape(B_sz * n_tickers, lookback, n_past).to(
-            device, non_blocking=True
-        )
-
-        future_x = batch["future"].unsqueeze(1).expand(-1, n_tickers, -1, -1)
-        future_x = future_x.reshape(B_sz * n_tickers, 1, n_future).to(
-            device, non_blocking=True
-        )
-
-        targets = batch["target"].view(B_sz * n_tickers).to(device, non_blocking=True)
+        static_x = batch["static"].to(device, non_blocking=True)
+        past_x = batch["past"].to(device, non_blocking=True)
+        future_x = batch["future"].to(device, non_blocking=True)
+        targets = batch["target"].to(device, non_blocking=True)
 
         optimizer.zero_grad()
-        predictions = model(static_x, past_x, future_x).squeeze(-1)
-        loss = criterion(predictions, targets)
-        loss.backward()
 
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=grad_clip)
-        optimizer.step()
+        # Enable AMP
+        with torch.amp.autocast("cuda", enabled=(device.type == "cuda")):
+            predictions = model(static_x, past_x, future_x).squeeze(-1)
+            loss = criterion(predictions, targets)
+
+        if scaler is not None:
+            scaler.scale(loss).backward()
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=grad_clip)
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=grad_clip)
+            optimizer.step()
 
         total_loss += loss.item()
         n_batches += 1
@@ -110,32 +103,13 @@ def evaluate(
 
     with torch.no_grad():
         for batch in tqdm(loader, desc="  [Eval] ", leave=False, disable=disable_tqdm):
-            B_sz, n_tickers, n_static = batch["static"].shape
-            lookback = batch["past"].shape[1]
-            n_past = batch["past"].shape[2]
-            n_future = batch["future"].shape[2]
+            static_x = batch["static"].to(device, non_blocking=True)
+            past_x = batch["past"].to(device, non_blocking=True)
+            future_x = batch["future"].to(device, non_blocking=True)
+            targets = batch["target"].to(device, non_blocking=True)
 
-            static_x = (
-                batch["static"]
-                .view(B_sz * n_tickers, n_static)
-                .to(device, non_blocking=True)
-            )
-
-            past_x = batch["past"].unsqueeze(1).expand(-1, n_tickers, -1, -1)
-            past_x = past_x.reshape(B_sz * n_tickers, lookback, n_past).to(
-                device, non_blocking=True
-            )
-
-            future_x = batch["future"].unsqueeze(1).expand(-1, n_tickers, -1, -1)
-            future_x = future_x.reshape(B_sz * n_tickers, 1, n_future).to(
-                device, non_blocking=True
-            )
-
-            targets = (
-                batch["target"].view(B_sz * n_tickers).to(device, non_blocking=True)
-            )
-
-            preds = model(static_x, past_x, future_x).squeeze(-1)
+            with torch.amp.autocast("cuda", enabled=(device.type == "cuda")):
+                preds = model(static_x, past_x, future_x).squeeze(-1)
             preds_list.append(preds.cpu())
             targets_list.append(targets.cpu())
 
@@ -214,6 +188,7 @@ def train_model(
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode="min", factor=0.5, patience=3
     )
+    scaler = torch.amp.GradScaler("cuda", enabled=(device.type == "cuda"))
 
     # Historical bookkeeping
     history: dict[str, Any] = {
@@ -246,7 +221,9 @@ def train_model(
         curr_lr = optimizer.param_groups[0]["lr"]
 
         # --- train ---
-        avg_train_mse = train_epoch(model, train_loader, optimizer, device, grad_clip)
+        avg_train_mse = train_epoch(
+            model, train_loader, optimizer, device, scaler, grad_clip
+        )
         train_rmse = float(np.sqrt(avg_train_mse))
 
         # --- validate ---
