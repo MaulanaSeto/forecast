@@ -154,6 +154,13 @@ def create_dataloaders(
         ``split_idx`` — the integer index at which the temporal split occurs.
     """
 
+    # ----- scale batch size if distributed ----------------------------------
+    if is_distributed:
+        import torch.distributed as dist
+
+        world_size = dist.get_world_size() if dist.is_initialized() else 1
+        batch_size = max(1, batch_size // world_size)
+
     # ----- unpack ----------------------------------------------------------
     train_past: np.ndarray = data_dict["train_past"]
     train_future: np.ndarray = data_dict["train_future"]

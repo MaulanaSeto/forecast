@@ -180,7 +180,13 @@ def train_model(
     if is_distributed:
         from torch.nn.parallel import DistributedDataParallel as DDP
 
-        model = DDP(model, device_ids=[local_rank], output_device=local_rank)
+        model = DDP(
+            model,
+            device_ids=[local_rank],
+            output_device=local_rank,
+            gradient_as_bucket_view=True,
+            bucket_cap_mb=15,
+        )
 
     optimizer = torch.optim.Adam(
         model.parameters(), lr=config["lr"], weight_decay=config["weight_decay"]
