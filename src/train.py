@@ -188,6 +188,34 @@ def train_model(
             bucket_cap_mb=15,
         )
 
+    # Compile model for faster training on PyTorch 2.x
+    if hasattr(torch, "compile"):
+        try:
+            compiled_model = torch.compile(model)
+            if is_main_process:
+                print(
+                    "  [Warmup] Testing torch.compile() with a dry-run forward pass..."
+                )
+
+            # Fetch a dummy batch from loader
+            dummy_batch = next(iter(train_loader))
+            dummy_static = dummy_batch["static"][:2].to(device)
+            dummy_past = dummy_batch["past"][:2].to(device)
+            dummy_future = dummy_batch["future"][:2].to(device)
+
+            with torch.amp.autocast("cuda", enabled=(device.type == "cuda")):
+                with torch.no_grad():
+                    _ = compiled_model(dummy_static, dummy_past, dummy_future)
+
+            model = compiled_model
+            if is_main_process:
+                print("  [OK] torch.compile() enabled successfully.")
+        except Exception as e:
+            if is_main_process:
+                print(
+                    f"  [WARNING] torch.compile failed during warmup: {e}. Falling back to eager mode."
+                )
+
     optimizer = torch.optim.Adam(
         model.parameters(), lr=config["lr"], weight_decay=config["weight_decay"]
     )
@@ -258,7 +286,11 @@ def train_model(
             best_val_rmse = val_rmse
             best_epoch = epoch
             patience_counter = 0
-            raw_model = model.module if hasattr(model, "module") else model
+            raw_model = model
+            if hasattr(raw_model, "module"):
+                raw_model = raw_model.module
+            if hasattr(raw_model, "_orig_mod"):
+                raw_model = raw_model._orig_mod
             best_state_dict = {
                 k: v.cpu().clone() for k, v in raw_model.state_dict().items()
             }
@@ -277,10 +309,18 @@ def train_model(
             print(
                 f"\n  [OK] Best model (Epoch {best_epoch}) saved to {os.path.basename(best_state_path)}"
             )
-            raw_model = model.module if hasattr(model, "module") else model
+            raw_model = model
+            if hasattr(raw_model, "module"):
+                raw_model = raw_model.module
+            if hasattr(raw_model, "_orig_mod"):
+                raw_model = raw_model._orig_mod
             raw_model.load_state_dict(best_state_dict)
         else:
-            raw_model = model.module if hasattr(model, "module") else model
+            raw_model = model
+            if hasattr(raw_model, "module"):
+                raw_model = raw_model.module
+            if hasattr(raw_model, "_orig_mod"):
+                raw_model = raw_model._orig_mod
             torch.save(raw_model.state_dict(), best_state_path)
             print(f"\n  [OK] Final model saved to {os.path.basename(best_state_path)}")
 
