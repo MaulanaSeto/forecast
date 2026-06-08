@@ -9,7 +9,7 @@ lookback: 60
 horizon: 1
 
 # Training
-batch_size: 256
+batch_size: 1024
 lr: 0.001
 weight_decay: 0.0001
 max_epochs: 30
@@ -17,7 +17,8 @@ patience: 5
 grad_clip: 1.0
 num_workers: 4
 max_gpus: 4
-use_checkpoint: true
+use_checkpoint: false
+compile_model: false
 
 # Validation
 val_split: 0.8

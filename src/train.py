@@ -189,7 +189,7 @@ def train_model(
         )
 
     # Compile model for faster training on PyTorch 2.x
-    if hasattr(torch, "compile"):
+    if config.get("compile_model", False) and hasattr(torch, "compile"):
         try:
             compiled_model = torch.compile(model)
             if is_main_process:
