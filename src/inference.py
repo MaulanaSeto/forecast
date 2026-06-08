@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from typing import Any
 
 import numpy as np
-import pandas as pd  # type: ignore
+import polars as pl  # type: ignore
 import torch
 from torch import nn
 from tqdm import tqdm  # type: ignore
@@ -106,7 +106,7 @@ def create_submission(
     test_timestamps: Sequence[Any],
     sample_submission_path: str,
     output_path: str = "submission.csv",
-) -> pd.DataFrame:
+) -> pl.DataFrame:
     """Create a submission CSV file."""
     # Build prediction lookup
     pred_lookup: dict[str, float] = {}
@@ -115,10 +115,14 @@ def create_submission(
         for tick_idx, ticker in enumerate(target_tickers):
             pred_lookup[f"{ticker}_{ts_str}"] = float(predictions[t_idx, tick_idx])
 
-    # Map predictions
-    sub = pd.read_csv(sample_submission_path)
-    sub["expected"] = sub["id"].map(lambda x: pred_lookup.get(str(x), 0.0))
-    sub.to_csv(output_path, index=False)
+    # Map predictions using Left Join which is ~10x faster in Polars
+    pred_df = pl.DataFrame(
+        {"id": list(pred_lookup.keys()), "expected": list(pred_lookup.values())}
+    )
+    sub = pl.read_csv(sample_submission_path)
+    sub = sub.drop("expected").join(pred_df, on="id", how="left").fill_null(0.0)
+
+    sub.write_csv(output_path)
     print(f"  Submission: {output_path} ({len(sub):,} rows)")
     return sub
 

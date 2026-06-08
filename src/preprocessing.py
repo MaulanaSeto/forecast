@@ -11,10 +11,10 @@ This module handles ALL data preprocessing:
 """
 
 import os
-from typing import Any, cast
+from typing import Any
 
 import numpy as np
-import pandas as pd  # type: ignore
+import polars as pl  # type: ignore
 from sklearn.preprocessing import LabelEncoder, StandardScaler  # type: ignore
 
 # 100 target tickers (alphabetical, as given in the competition spec)
@@ -155,7 +155,7 @@ def _discover_all_tickers(columns: list[str]) -> list[str]:
     return tickers
 
 
-def _build_time_features(timestamps: pd.Series) -> pd.DataFrame:
+def _build_time_features(timestamps: pl.Series) -> pl.DataFrame:
     """Create 6 known-future time features from a timestamp Series.
 
     Features
@@ -172,37 +172,43 @@ def _build_time_features(timestamps: pd.Series) -> pd.DataFrame:
     menit_dalam_sesi : float
         Minutes elapsed since the start of the current session (0 if sesi == 0).
     """
-    ts = pd.to_datetime(timestamps)
-    hour = ts.dt.hour + ts.dt.minute / 60.0  # fractional hour
+    if timestamps.dtype == pl.String:
+        ts = timestamps.str.to_datetime()
+    else:
+        ts = timestamps
+    hour = ts.dt.hour() + ts.dt.minute() / 60.0  # fractional hour
 
-    hour_sin = np.sin(2 * np.pi * hour / 24.0)
-    hour_cos = np.cos(2 * np.pi * hour / 24.0)
+    hour_sin = np.sin(2 * np.pi * hour.to_numpy() / 24.0)
+    hour_cos = np.cos(2 * np.pi * hour.to_numpy() / 24.0)
 
-    dow = ts.dt.dayofweek.astype(float)  # Monday=0 … Friday=4
-    dow_sin = np.sin(2 * np.pi * dow / 7.0)
-    dow_cos = np.cos(2 * np.pi * dow / 7.0)
+    dow = (ts.dt.weekday() - 1).cast(
+        pl.Float64
+    )  # Monday=0 … Friday=4 (Monday=0...Sunday=6)
+    dow_sin = np.sin(2 * np.pi * dow.to_numpy() / 7.0)
+    dow_cos = np.cos(2 * np.pi * dow.to_numpy() / 7.0)
 
     # Session assignment
-    total_minutes = ts.dt.hour * 60 + ts.dt.minute
+    total_minutes = ts.dt.hour().cast(pl.Int32) * 60 + ts.dt.minute().cast(pl.Int32)
+    total_minutes_np = total_minutes.to_numpy()
     sesi = np.zeros(len(ts), dtype=np.int32)
     menit_dalam_sesi = np.zeros(len(ts), dtype=np.float64)
 
     # Session 1: 09:00 – 11:29  →  540 – 689 minutes
-    mask_s1 = (total_minutes >= 540) & (total_minutes < 690)
+    mask_s1 = (total_minutes_np >= 540) & (total_minutes_np < 690)
     sesi[mask_s1] = 1
-    menit_dalam_sesi[mask_s1] = (total_minutes[mask_s1] - 540).astype(float)
+    menit_dalam_sesi[mask_s1] = (total_minutes_np[mask_s1] - 540).astype(float)
 
     # Session 2: 13:30 – 15:59  →  810 – 959 minutes
-    mask_s2 = (total_minutes >= 810) & (total_minutes < 960)
+    mask_s2 = (total_minutes_np >= 810) & (total_minutes_np < 960)
     sesi[mask_s2] = 2
-    menit_dalam_sesi[mask_s2] = (total_minutes[mask_s2] - 810).astype(float)
+    menit_dalam_sesi[mask_s2] = (total_minutes_np[mask_s2] - 810).astype(float)
 
-    return pd.DataFrame(
+    return pl.DataFrame(
         {
-            "hour_sin": hour_sin.values if hasattr(hour_sin, "values") else hour_sin,
-            "hour_cos": hour_cos.values if hasattr(hour_cos, "values") else hour_cos,
-            "dow_sin": dow_sin.values if hasattr(dow_sin, "values") else dow_sin,
-            "dow_cos": dow_cos.values if hasattr(dow_cos, "values") else dow_cos,
+            "hour_sin": hour_sin,
+            "hour_cos": hour_cos,
+            "dow_sin": dow_sin,
+            "dow_cos": dow_cos,
             "sesi": sesi,
             "menit_dalam_sesi": menit_dalam_sesi,
         }
@@ -210,36 +216,38 @@ def _build_time_features(timestamps: pd.Series) -> pd.DataFrame:
 
 
 def _build_static_features(
-    metadata: pd.DataFrame,
+    metadata: pl.DataFrame,
     target_tickers: list[str],
 ) -> np.ndarray:
     """Build a (100, 3) static feature matrix from metadata.
 
     Features per ticker: sektor_id, board_id, market_cap_bin.
     """
-    # Ensure metadata is indexed by Code for easy lookup
-    meta = metadata.copy()
-    meta["Code"] = meta["Code"].str.strip()
-    meta = meta.set_index("Code")
+    meta = metadata.with_columns(pl.col("Code").str.strip_chars())
+
+    all_sectors = meta["Sector"].fill_null("Unknown").to_list()
+    all_boards = meta["ListingBoard"].fill_null("Unknown").to_list()
 
     # Label-encode Sector
     sector_encoder = LabelEncoder()
-    all_sectors = meta["Sector"].fillna("Unknown").values
     sector_encoder.fit(all_sectors)
 
     # Label-encode ListingBoard
     board_encoder = LabelEncoder()
-    all_boards = meta["ListingBoard"].fillna("Unknown").values
     board_encoder.fit(all_boards)
 
     static = np.zeros((len(target_tickers), 3), dtype=np.float32)
 
+    meta_dict = {row["Code"]: row for row in meta.iter_rows(named=True)}
+
     for i, ticker in enumerate(target_tickers):
-        if ticker in meta.index:
-            row = meta.loc[ticker]
-            sector = row["Sector"] if pd.notna(row["Sector"]) else "Unknown"
-            board = row["ListingBoard"] if pd.notna(row["ListingBoard"]) else "Unknown"
-            mcap = row["MarketCap"] if pd.notna(row["MarketCap"]) else 0.0
+        if ticker in meta_dict:
+            row = meta_dict[ticker]
+            sector = row["Sector"] if row["Sector"] is not None else "Unknown"
+            board = (
+                row["ListingBoard"] if row["ListingBoard"] is not None else "Unknown"
+            )
+            mcap = row["MarketCap"] if row["MarketCap"] is not None else 0.0
 
             static[i, 0] = sector_encoder.transform([sector])[0]
             static[i, 1] = board_encoder.transform([board])[0]
@@ -252,9 +260,9 @@ def _build_static_features(
 
 
 def _compute_market_aggregates(
-    df: pd.DataFrame,
+    df: pl.DataFrame,
     all_tickers: list[str],
-) -> pd.DataFrame:
+) -> pl.DataFrame:
     """Compute 4 market-wide aggregate features from ALL 787 tickers.
 
     Features
@@ -267,8 +275,8 @@ def _compute_market_aggregates(
     ret_cols = [f"{t}_ret" for t in all_tickers if f"{t}_ret" in df.columns]
     vol_cols = [f"{t}_vol" for t in all_tickers if f"{t}_vol" in df.columns]
 
-    ret_block = df[ret_cols].values.astype(np.float64)
-    vol_block = df[vol_cols].values.astype(np.float64)
+    ret_block = df.select(ret_cols).to_numpy().astype(np.float64)
+    vol_block = df.select(vol_cols).to_numpy().astype(np.float64)
 
     # Replace inf with NaN for safe aggregation
     ret_block[~np.isfinite(ret_block)] = np.nan
@@ -282,14 +290,13 @@ def _compute_market_aggregates(
         axis=1,
     ).astype(np.float64)
 
-    return pd.DataFrame(
+    return pl.DataFrame(
         {
             "market_ret_mean": market_ret_mean,
             "market_ret_std": market_ret_std,
             "market_vol_total": market_vol_total,
             "n_aktif": n_aktif,
-        },
-        index=df.index,
+        }
     )
 
 
@@ -313,21 +320,21 @@ def preprocess_data(
         A dictionary containing all processed feature matrices and metadata.
     """
     # -- 1. Load raw CSVs -------------------------------------------------
-    train_df = pd.read_csv(os.path.join(data_dir, "train.csv"))
-    test_df = pd.read_csv(os.path.join(data_dir, "test.csv"))
-    metadata = pd.read_csv(os.path.join(data_dir, "metadata.csv"))
+    train_df = pl.read_csv(os.path.join(data_dir, "train.csv"))
+    test_df = pl.read_csv(os.path.join(data_dir, "test.csv"))
+    metadata = pl.read_csv(os.path.join(data_dir, "metadata.csv"))
 
     # Sort chronologically to prevent rolling window mismatch
-    train_df = train_df.sort_values("timestamp").reset_index(drop=True)
-    test_df = test_df.sort_values("timestamp").reset_index(drop=True)
+    train_df = train_df.sort("timestamp")
+    test_df = test_df.sort("timestamp")
 
     # -- 2. Discover tickers ----------------------------------------------
-    all_tickers = _discover_all_tickers(train_df.columns.tolist())
+    all_tickers = _discover_all_tickers(train_df.columns)
     target_tickers = TARGET_TICKERS
 
     # -- 3. Extract target matrix -----------------------------------------
     target_cols = [f"{t}_target" for t in target_tickers]
-    train_targets = train_df[target_cols].values.astype(np.float32)
+    train_targets = train_df.select(target_cols).to_numpy().astype(np.float32)
     train_targets[~np.isfinite(train_targets)] = 0.0
 
     # -- 4. Compute market aggregates ------------------------------------
@@ -338,8 +345,8 @@ def preprocess_data(
     ret_cols_target = [f"{t}_ret" for t in target_tickers]
     vol_cols_target = [f"{t}_vol" for t in target_tickers]
     past_ticker_cols = ret_cols_target + vol_cols_target
-    train_past_ticker = train_df[past_ticker_cols].values.astype(np.float64)
-    test_past_ticker = test_df[past_ticker_cols].values.astype(np.float64)
+    train_past_ticker = train_df.select(past_ticker_cols).to_numpy().astype(np.float64)
+    test_past_ticker = test_df.select(past_ticker_cols).to_numpy().astype(np.float64)
     train_past_ticker[~np.isfinite(train_past_ticker)] = np.nan
     test_past_ticker[~np.isfinite(test_past_ticker)] = np.nan
 
@@ -381,8 +388,8 @@ def preprocess_data(
         "market_vol_total",
         "n_aktif",
     ]
-    train_mkt = train_market[market_cols_names].values.astype(np.float64)
-    test_mkt = test_market[market_cols_names].values.astype(np.float64)
+    train_mkt = train_market.select(market_cols_names).to_numpy().astype(np.float64)
+    test_mkt = test_market.select(market_cols_names).to_numpy().astype(np.float64)
     train_mkt[~np.isfinite(train_mkt)] = np.nan
     test_mkt[~np.isfinite(test_mkt)] = np.nan
     m_q_low = np.nanpercentile(train_mkt, 1, axis=0)
@@ -406,12 +413,12 @@ def preprocess_data(
     past_cols = past_ticker_cols + market_cols_names
 
     # -- 11. Build time/static features ----------------------------------
-    train_future = _build_time_features(
-        cast(pd.Series, train_df["timestamp"])
-    ).values.astype(np.float32)
-    test_future = _build_time_features(
-        cast(pd.Series, test_df["timestamp"])
-    ).values.astype(np.float32)
+    train_future = (
+        _build_time_features(train_df["timestamp"]).to_numpy().astype(np.float32)
+    )
+    test_future = (
+        _build_time_features(test_df["timestamp"]).to_numpy().astype(np.float32)
+    )
     future_cols = [
         "hour_sin",
         "hour_cos",
@@ -421,7 +428,7 @@ def preprocess_data(
         "menit_dalam_sesi",
     ]
     static_matrix = _build_static_features(metadata, target_tickers)
-    test_timestamps = pd.to_datetime(test_df["timestamp"]).values
+    test_timestamps = test_df["timestamp"].to_list()
 
     n_train, n_test = train_past.shape[0], test_past.shape[0]
     msg = (

@@ -16,7 +16,7 @@ from typing import Any
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd  # type: ignore
+import polars as pl  # type: ignore
 import torch
 from torch import nn, Tensor
 from torch.utils.data import DataLoader
@@ -161,9 +161,9 @@ def evaluate(
 
 def save_history_csv(history: dict[str, list], save_dir: str) -> None:
     """Save training history to a CSV file for analysis in IPYNB."""
-    df = pd.DataFrame(history)
+    df = pl.DataFrame(history)
     path = os.path.join(save_dir, "metrics.csv")
-    df.to_csv(path, index=False)
+    df.write_csv(path)
     print(f"  History saved to {path}")
 
 

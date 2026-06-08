@@ -26,7 +26,7 @@ Pastikan Anda memiliki Python 3.9+ dan GPU dengan dukungan CUDA (sangat disarank
 ### Instalasi Dependensi
 
 ```bash
-pip install torch numpy pandas scikit-learn matplotlib tqdm pyyaml
+pip install torch numpy polars scikit-learn matplotlib tqdm pyyaml
 ```
 
 ## Konfigurasi
